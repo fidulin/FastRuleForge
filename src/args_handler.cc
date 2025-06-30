@@ -60,6 +60,23 @@ void args_handler::parse_args(int argc, char *argv[]){
                 catch(...){}
             }
         }
+        else if(args[i] == "--LFC"){
+            method_name = "LFC";
+            method_set = true;
+            kernel_main_function = "DISTANCES";
+            if(i+1 < argc){
+                try{
+                    int number1 = std::stoi(args[i+1]);
+                    if(number1 < 0 || number1 > 255){
+                        throw std::out_of_range("Threshold value out of range");
+                    }
+                    threshold = static_cast<unsigned char>(number1);
+                    i += 1;
+                    continue;
+                }
+                catch(...){}
+            }
+        }
         else if(args[i] == "--MLF"){
             method_name = "MLF";
             method_set = true;
@@ -254,6 +271,9 @@ void args_handler::parse_args(int argc, char *argv[]){
 std::unique_ptr<clustering_method> args_handler::get_method(){
     if(method_name == "LF"){
         return std::make_unique<LF>(threshold, randomize);
+    }
+    else if(method_name == "LFC"){
+        return std::make_unique<LFC>(threshold, randomize);
     }
     else if(method_name == "MLF"){
         return std::make_unique<MLF>(threshold_main, threshold_sec, threshold_total, randomize);

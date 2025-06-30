@@ -74,7 +74,99 @@ public:
         return result;
     }
 
-    
+
+private:
+    unsigned char threshold;
+    bool randomize;
+};
+
+//like LF but moves leadership - possible improvement
+class LFC : public clustering_method {
+public:
+    LFC(unsigned char threshold, bool randomize) : threshold(threshold), randomize(randomize) {}
+
+    int new_leader(std::vector<int> &current_cluster, unsigned char t, size_t global_work_size){
+        int min_sum = INT32_MAX;
+        int new_leader = current_cluster[0];
+
+        for(int i : current_cluster){
+            int sum = 0;
+            
+            int *distances = gpu_executor->calculate_distances_to(i, t, global_work_size);
+            for(int e : current_cluster){
+                if(i==e){
+                    continue;
+                }
+                sum += distances[e];
+            }
+            delete[] distances;
+            
+            if(sum < min_sum){
+                new_leader = i;
+                min_sum = sum;
+            }
+        }
+        return new_leader;
+    }
+
+    int* calculate() override {
+        size_t global_work_size = PASSWORDS_COUNT;
+
+        int* distances;
+
+        int* result = new int[PASSWORDS_COUNT];
+        #pragma omp parallel for
+        for(int i = 0; i < PASSWORDS_COUNT; i++){
+            result[i] = -1;
+        }
+
+        std::vector<int> indexes(PASSWORDS_COUNT);
+        #pragma omp parallel for
+        for(int i = 0; i < PASSWORDS_COUNT; i++){
+            indexes[i] = i;
+        }
+
+        if(randomize){
+            std::random_device rd;
+            std::mt19937 g(rd());
+            std::shuffle(indexes.begin(), indexes.end(), g);
+        }
+
+        for(int i : indexes){
+            if(result[i] != -1){
+                continue;
+            }
+            result[i] = i;
+
+            int leader = i;
+            std::vector<int> current_cluster;
+            current_cluster.push_back(i);
+
+            bool changed = true;
+
+            while(changed){
+                changed = false;
+
+                distances = gpu_executor->calculate_distances_to(leader, threshold, global_work_size);
+                for(int e=0; e<PASSWORDS_COUNT; e++){
+                    if(result[e] == -1 && distances[e] <= threshold){
+                        result[e] = i;
+                        current_cluster.push_back(e);
+                    }
+                }
+                delete[] distances;
+
+                if(current_cluster.size() > 1){
+                    int old_leader = leader;
+                    leader = new_leader(current_cluster, threshold, global_work_size);
+                    if(old_leader != leader){
+                        changed = true;
+                    }
+                }
+            }
+        }
+        return result;
+    }
 
 private:
     unsigned char threshold;
