@@ -1,0 +1,9 @@
+perf_testing/myspace-20000.txt(20000) -> english-6.txt(15542) -> Xato-net-100k.txt(99986)
+
+--LF 2 --N 10000     | Avg Hits: 27114.66 | Avg Time: 3.05     ms | Avg Rules: 9589.33
+--LF 3 --N 10000     | Avg Hits: 23712.33 | Avg Time: 4.55     ms | Avg Rules: 10000.00
+--LFC 2 --N 10000    | Avg Hits: 26964.66 | Avg Time: 7.00     ms | Avg Rules: 10000.00
+--LFC 3 --N 10000    | Avg Hits: 23484.66 | Avg Time: 6.77     ms | Avg Rules: 10000.00
+--MLF 2 1 3 --N 10000 | Avg Hits: 26890.33 | Avg Time: 6.98     ms | Avg Rules: 9817.33
+--MDBSCAN --N 10000  | Avg Hits: 23693.00 | Avg Time: 4.35     ms | Avg Rules: 10000.00
+=============================================================================
