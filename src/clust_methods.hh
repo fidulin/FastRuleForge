@@ -98,18 +98,34 @@ private:
     bool randomize;
 };
 
-//like LF but moves leadership - possible improvement
+/*
+ * LEADER FOLLOWER !!!CENTERED!!! CLUSTERING METHOD (LEADERS METHOD)
+ * 
+ * Modified version of LF that changes the leader to password that is the 'Levenshtein cluster center'.
+ * The clusters should be a bit bigger than LF and there should be less change between runs - that is teorethically off course.
+ *
+ * 1) This method randomly chooses (if randomize == true) a password, that has not yet been labeled (-1 in result array).
+ * This chosen password is proclaimed as Leader and a new cluster is created for it.
+ * 2) All password closer than threshold that are unlabeled are added to this newly created cluster.
+ * Then the new leader of this cluster is calculated - it has the lowest average Lev. distances to others in cluster.
+ * If the leader is different, go to step 2), otherwise finnish with this cluster and go to step 1). 
+ * 
+ */
 class LFC : public clustering_method {
 public:
     LFC(unsigned char threshold, bool randomize) : threshold(threshold), randomize(randomize) {}
 
+    //This function returns index of a password from this cluster - the new leader.
+    //New leader is password with minimal average distance to others in its current cluster.
     int new_leader(std::vector<int> &current_cluster, unsigned char t, size_t global_work_size){
         int min_sum = INT32_MAX;
         int new_leader = current_cluster[0];
 
+        //For every password in cluster.
         for(int i : current_cluster){
             int sum = 0;
-            
+
+            //distances to ALL passwords is calulated - maybe it would be quicker normally.
             int *distances = gpu_executor->calculate_distances_to(i, t, global_work_size);
             for(int e : current_cluster){
                 if(i==e){
@@ -118,7 +134,8 @@ public:
                 sum += distances[e];
             }
             delete[] distances;
-            
+
+            //Minimal average distance with the potential new leader is stored.
             if(sum < min_sum){
                 new_leader = i;
                 min_sum = sum;
@@ -131,6 +148,7 @@ public:
         size_t global_work_size = PASSWORDS_COUNT;
 
         int* distances;
+        // The setup is same as LF.
 
         int* result = new int[PASSWORDS_COUNT];
         #pragma omp parallel for
@@ -150,21 +168,25 @@ public:
             std::shuffle(indexes.begin(), indexes.end(), g);
         }
 
+        //For every password.
         for(int i : indexes){
             if(result[i] != -1){
                 continue;
             }
-            result[i] = i;
 
+            //The current password is proclaimed as leader and is in its own cluster.
+            result[i] = i;
             int leader = i;
             std::vector<int> current_cluster;
             current_cluster.push_back(i);
 
             bool changed = true;
 
+            //Repeat if the current clusters leader has changed.
             while(changed){
                 changed = false;
 
+                //All passwords closer than threshold to the current leader are added to current cluster.
                 distances = gpu_executor->calculate_distances_to(leader, threshold, global_work_size);
                 for(int e=0; e<PASSWORDS_COUNT; e++){
                     if(result[e] == -1 && distances[e] <= threshold){
@@ -174,6 +196,7 @@ public:
                 }
                 delete[] distances;
 
+                //If there is more than one password in this cluster - recalculate the leader.
                 if(current_cluster.size() > 1){
                     int old_leader = leader;
                     leader = new_leader(current_cluster, threshold, global_work_size);
