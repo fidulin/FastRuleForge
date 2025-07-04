@@ -28,6 +28,15 @@ public:
     int PASSWORDS_COUNT;
 };
 
+/*
+ * LEADER FOLLOWER CLUSTERING METHOD (LEADERS METHOD)
+ *
+ * This method randomly chooses (if randomize == true) a password, that has not yet been labeled (-1 in result array).
+ * This chosen password is proclaimed as Leader and a new cluster is created for it.
+ * All password closer than threshold that are unlabeled are added to this newly created cluster.
+ * Until there are any unlabeled passwords left, the steps above are performed in a loop.
+ * 
+ */
 class LF : public clustering_method {
 public:
     LF(unsigned char threshold, bool randomize) : threshold(threshold), randomize(randomize) {}
@@ -37,12 +46,16 @@ public:
 
         int* distances;
 
+        //Setting up results array - for each password there will be a cluster number in this array.
+        //For now its all -1
+        //-1 on index means password with this index has not been assigned to a cluster.
         int* result = new int[PASSWORDS_COUNT];
         #pragma omp parallel for
         for(int i = 0; i < PASSWORDS_COUNT; i++){
             result[i] = -1;
         }
 
+        //Randomising the sequence of passwords
         std::vector<int> indexes(PASSWORDS_COUNT);
         #pragma omp parallel for
         for(int i = 0; i < PASSWORDS_COUNT; i++){
@@ -55,13 +68,18 @@ public:
             std::shuffle(indexes.begin(), indexes.end(), g);
         }
 
+        //For all passwords in a randomised sequence.
         for(int i : indexes){
             if(result[i] != -1){
                 continue;
             }
+
+            //The password i is a Leader and distances to all other passwords are calculated.
+            //It has its own cluster.
             result[i] = i;
             distances = gpu_executor->calculate_distances_to(i, threshold, global_work_size);
-            
+
+            //All passwords closer than threshold are added to Leaders cluster - that is if they are not part of another cluster.
             #pragma omp parallel for
             for(int e=0; e<PASSWORDS_COUNT; e++){
                 if(result[e] == -1 && distances[e] <= threshold){
