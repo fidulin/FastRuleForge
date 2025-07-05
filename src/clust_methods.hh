@@ -214,7 +214,22 @@ private:
     bool randomize;
 };
 
-
+/*
+ * MODIFIED LEADER FOLLOWER CLUSTERING METHOD (MODIFIED LEADERS METHOD)
+ * Method created by myself for this very purpose.
+ * 
+ * The method tries to eliminate the limitation of LF method - passwords can join the cluster even if they are further from
+ * the leader but they must be close enough to a different password already in said cluster.
+ *
+ * As in the previous methods, unlabeled password is chosen at random (thats the default). - end if there isnt any
+ * This password can join a leader that already exists if its at least threshold_main close to it.
+ * If this condition is not met - there is another way here:
+ * If the password is at least threshold_sec close to an already labeled password and at the same time
+ * it is at least threshold_total close to leader of that labeled password, the current password joins this cluster.
+ * If both ways of joining fail - the password itself becomes a leader and algorithm chooses another password (step 1 again).
+ * 
+ * It is important that threshold_total is greater than threshold_main - otherwise it will behave as basic LF.
+ */
 class MLF : public clustering_method {
 public:
     MLF(unsigned char t1, unsigned char t2, unsigned char t3, bool randomize) : 
@@ -246,11 +261,14 @@ public:
 
         unsigned char max_threshold = std::max(std::max(threshold_main, threshold_sec), threshold_total);
 
+        //For every password.
         for(int i : indexes){
-            
+
+            //Distances to all other passwords are calculated.
             distances = gpu_executor->calculate_distances_to(i, max_threshold, global_work_size);
 
             bool joined = false;
+            //Current password (index i) is checked - if its at least threshold_main close to a leader, it joins this leaders cluster.
             for(int j : leaders){
                 if(distances[j] <= threshold_main){
                     result[i] = j;
@@ -259,6 +277,9 @@ public:
                 }
             }
 
+            //If current password didnt join a leader yet - there is another possibility to join a leaders cluster. Two conditions have to be met.
+            //1) The password must be at least threshold_sec close to a labeled password (already in a cluster).
+            //2) It has to be at least threshold_total close to leader of said labeled password in 1).
             if(!joined){
             for(int j = 0; j < PASSWORDS_COUNT; j++){
                 //joins if distance to non leader is <= threshold_sec and distance to leader of its cluster is <= threshold_total
@@ -270,6 +291,7 @@ public:
             }
             }
 
+            //If current password didnt join any leader, it becomes one.
             if(!joined){
                 leaders.push_back(i);
                 result[i] = i;
