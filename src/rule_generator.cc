@@ -442,6 +442,49 @@ rule_a_distance rule_generator::apply_rule(std::string rule, std::string *repres
     rad.distance = -1;
     return rad;
   }
+  else if(rule == "Y"){ //Duplicate last N characters
+    std::string tmp_representative = *representative;
+    rule_a_distance rad;
+
+    int length_diff = (*password).length() - tmp_representative.length();
+    if(length_diff < 1){ //If the password is longer than duplicating characters cannot get the representative closer
+      rad.rule = "";
+      rad.distance = -1;
+      return rad;
+    }
+    if(length_diff > tmp_representative.length()){ //Overflow protection
+      length_diff = tmp_representative.length();
+    }
+
+    //duplicate last i (N) characters
+    for (int i = 0; i < length_diff; i++) {
+      int chars_to_duplicate = length_diff - i;
+      std::string tail = tmp_representative.substr(tmp_representative.length() - chars_to_duplicate, chars_to_duplicate);
+      tmp_representative += tail;
+
+      int new_distance = levenshtein_distance(tmp_representative, *password);
+      if (new_distance < distance) {
+          if (length_diff - i < 10) {
+              *representative = tmp_representative;
+              rad.rule = rule + std::to_string(length_diff - i);
+              rad.distance = new_distance;
+              return rad;
+          } else if (length_diff - i < 36) {
+              *representative = tmp_representative;
+              rad.rule = rule + static_cast<char>(length_diff - i + 55);
+              rad.distance = new_distance;
+              return rad;
+          } else {
+              break;
+          }
+      } else {
+          tmp_representative = *representative; // reset for next try
+      }
+    }
+    rad.rule = "";
+    rad.distance = -1;
+    return rad;
+  }
   else{
     rule_a_distance rad;
     rad.rule = "";

@@ -24,6 +24,8 @@ public:
     unsigned char threshold_sec = 4;
     unsigned char threshold_total = 4;
 
+    double threshold_total_jw = 0.25;
+
     int N = -1;
     
     unsigned char eps_1 = 2;
@@ -39,9 +41,9 @@ public:
     int iter = 15;
     float lambda = 0.9;
 
-    std::vector<std::string> all_rules = {":", "l", "u", "c", "t", "T", "$", "^", "[", "]", "z", "Z", "D", "i", "o", "s", "}", "{", "r"};
+    std::vector<std::string> all_rules = {":", "l", "u", "c", "t", "T", "$", "^", "[", "]", "z", "Z", "D", "i", "o", "s", "}", "{", "r", "Y"};
 
-    std::vector<std::string> rules = {":", "l", "u", "c", "t", "T", "$", "^", "[", "]", "z", "Z", "D", "i", "o", "s", "}", "{", "r"};
+    std::vector<std::string> rules = {":", "l", "u", "c", "t", "T", "$", "^", "[", "]", "z", "Z", "D", "i", "o", "s", "}", "{", "r", "Y"};
 
 
     std::string kernel_main_function = "DISTANCES";
