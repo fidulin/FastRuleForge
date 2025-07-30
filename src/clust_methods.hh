@@ -483,61 +483,146 @@ private:
     bool randomize;
 };
 
+constexpr double JARO_WEIGHT_STRING_A(1.0/3.0);
+constexpr double JARO_WEIGHT_STRING_B(1.0/3.0);
+constexpr double JARO_WEIGHT_TRANSPOSITIONS(1.0/3.0);
+
+constexpr int JARO_WINKLER_PREFIX_SIZE(4);
+constexpr double JARO_WINKLER_SCALING_FACTOR(0.1);
+constexpr double JARO_WINKLER_BOOST_THRESHOLD(0.7);
+
+#define JARO_WINKLER_USE_EARLY_RETURN_PREFIX
+#define JARO_WINKLER_USE_THRESHOLD
+
 class MDBSCAN : public clustering_method{
 public:
     MDBSCAN(unsigned char eps_1, double eps_2, int minPts, bool randomize) : eps_1(eps_1), eps_2(eps_2), minPts(minPts), randomize(randomize) {}
 
     /*
-    * This implementation of the Jaro-Winkler distance is based on code from Rosetta Code:
-    * https://rosettacode.org/wiki/Jaro-Winkler_distance
-    * Licensed under the GNU Free Documentation License 1.3
+    * This implementation of the Jaro-Winkler distance is based on code by YumaTheCompanion:
+    * https://github.com/YumaTheCompanion/Jaro-Winkler/
+    * Licensed under the MIT License.
     */
-    double jaro_winkler_distance(std::string &str1, std::string &str2) {
-        size_t len1 = str1.size();
-        size_t len2 = str2.size();
-        if (len1 < len2) {
-            std::swap(str1, str2);
-            std::swap(len1, len2);
+    double jaro_winkler_distance(const std::string &str1, const std::string &str2) {
+        // Register strings length.
+        const int str1Length(str1.size());
+        const int str2Length(str2.size());
+        
+        // If one string has null length, we return 1.
+        if (str1Length == 0 || str2Length == 0)
+        {
+            return 1.0;
         }
-        if (len2 == 0)
-            return len1 == 0 ? 0.0 : 1.0;
-        size_t delta = std::max(size_t(1), len1/2) - 1;
-        std::vector<bool> flag(len2, false);
-        std::vector<char> ch1_match;
-        ch1_match.reserve(len1);
-        for (size_t idx1 = 0; idx1 < len1; ++idx1) {
-            char ch1 = str1[idx1];
-            for (size_t idx2 = 0; idx2 < len2; ++idx2) {
-                char ch2 = str2[idx2];
-                if (idx2 <= idx1 + delta && idx2 + delta >= idx1
-                    && ch1 == ch2 && !flag[idx2]) {
-                    flag[idx2] = true;
-                    ch1_match.push_back(ch1);
+        
+        // Calculate max length range.
+        const int maxRange(std::max(0, std::max(str1Length, str2Length) / 2 - 1));
+        
+        // Creates 2 vectors of integers.
+        std::vector<bool> str1Match(str1Length, false);
+        std::vector<bool> str2Match(str2Length, false);
+        
+        // Calculate matching characters.
+        int matchingCharacters(0);
+        for (int str1Index(0); str1Index < str1Length; ++str1Index)
+        {
+            // Calculate window test limits (limit inferior to 0 and superior to str2Length).
+            const int minIndex(std::max(str1Index - maxRange, 0));
+            const int maxIndex(std::min(str1Index + maxRange + 1, str2Length));
+            
+            if (minIndex >= maxIndex)
+            {
+                // No more common character because we don't have characters in b to test with characters in a.
+                break;
+            }
+            
+            for (int str2Index(minIndex); str2Index < maxIndex; ++str2Index)
+            {
+                if (!str2Match.at(str2Index) && str1.at(str1Index) == str2.at(str2Index))
+                {
+                    // Found some new match.
+                    str1Match[str1Index] = true;
+                    str2Match[str2Index] = true;
+                    ++matchingCharacters;
                     break;
                 }
             }
         }
-        size_t matches = ch1_match.size();
-        if (matches == 0)
+        
+        // If no matching characters, we return 1.
+        if (matchingCharacters == 0)
+        {
             return 1.0;
-        size_t transpositions = 0;
-        for (size_t idx1 = 0, idx2 = 0; idx2 < len2; ++idx2) {
-            if (flag[idx2]) {
-                if (str2[idx2] != ch1_match[idx1])
-                    ++transpositions;
-                ++idx1;
+        }
+        
+        // Calculate character transpositions.
+        std::vector<int> str1Position(matchingCharacters, 0);
+        std::vector<int> str2Position(matchingCharacters, 0);
+        
+        for (int str1Index(0), positionIndex(0); str1Index < str1Length; ++str1Index)
+        {
+            if (str1Match.at(str1Index))
+            {
+                str1Position[positionIndex] = str1Index;
+                ++positionIndex;
             }
         }
-        double m = matches;
-        double jaro = (m/len1 + m/len2 + (m - transpositions/2.0)/m)/3.0;
-        size_t common_prefix = 0;
-        len2 = std::min(size_t(4), len2);
-        for (size_t i = 0; i < len2; ++i) {
-            if (str1[i] == str2[i])
-                ++common_prefix;
+        
+        for (int str2Index(0), positionIndex(0); str2Index < str2Length; ++str2Index)
+        {
+            if (str2Match.at(str2Index))
+            {
+                str2Position[positionIndex] = str2Index;
+                ++positionIndex;
+            }
         }
-        return 1.0 - (jaro + common_prefix * 0.1 * (1.0 - jaro));
+        
+        // Counting half-transpositions.
+        int transpositions(0);
+        for (int index(0); index < matchingCharacters; ++index)
+        {
+            if (str1.at(str1Position.at(index)) != str2.at(str2Position.at(index)))
+            {
+                ++transpositions;
+            }
+        }
+        
+        // Calculate Jaro distance.
+        double distance = (
+            JARO_WEIGHT_STRING_A * matchingCharacters / str1Length +
+            JARO_WEIGHT_STRING_B * matchingCharacters / str2Length +
+            JARO_WEIGHT_TRANSPOSITIONS * ((matchingCharacters - transpositions) / 2.0) / matchingCharacters
+        );
+
+        #ifdef JARO_WINKLER_USE_THRESHOLD
+        if (distance > JARO_WINKLER_BOOST_THRESHOLD)
+        {
+        #endif
+            // Calculate common string prefix.
+            int commonPrefix(0);
+            for (int index(0), indexEnd(std::min(std::min(str1Length,str2Length), JARO_WINKLER_PREFIX_SIZE)); index < indexEnd; ++index)
+            {
+                if (str1.at(index) == str2.at(index))
+                {
+                    ++commonPrefix;
+                }
+                #ifdef JARO_WINKLER_USE_EARLY_RETURN_PREFIX
+                else
+                {
+                    break;
+                }
+                #endif
+            }
+            
+            // Calculate Jaro-Winkler distance.
+            distance += JARO_WINKLER_SCALING_FACTOR * commonPrefix * (1.0 - distance);
+        #ifdef JARO_WINKLER_USE_THRESHOLD
+        }
+        #endif
+        
+        return 1.0 - distance;
+    
     }
+
 
     int* calculate() override{
         size_t global_work_size = PASSWORDS_COUNT;
