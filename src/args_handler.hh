@@ -41,9 +41,9 @@ public:
     int iter = 15;
     float lambda = 0.9;
 
-    std::vector<std::string> all_rules = {":", "l", "u", "c", "t", "T", "$", "^", "[", "]", "z", "Z", "D", "i", "o", "s", "}", "{", "r", "Y"};
+    std::vector<std::string> all_rules = {":", "l", "u", "c", "t", "T", "$", "^", "[", "]", "z", "Z", "D", "i", "o", "s", "}", "{", "r", "Y", "\'", "y", ",", "."};
 
-    std::vector<std::string> rules = {":", "l", "u", "c", "t", "T", "$", "^", "[", "]", "z", "Z", "D", "i", "o", "s", "}", "{", "r", "Y"};
+    std::vector<std::string> rules = {":", "l", "u", "c", "t", "T", "$", "^", "[", "]", "z", "Z", "D", "i", "o", "s", "}", "{", "r", "Y", "\'", "y", ",", "."};
 
 
     std::string kernel_main_function = "DISTANCES";

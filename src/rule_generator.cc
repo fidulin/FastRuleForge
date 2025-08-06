@@ -485,6 +485,118 @@ rule_a_distance rule_generator::apply_rule(std::string rule, std::string *repres
     rad.distance = -1;
     return rad;
   }
+  else if(rule == "y"){ //Duplicate first N characters
+    std::string tmp_representative = *representative;
+    rule_a_distance rad;
+
+    if(tmp_representative.length() >= (*password).length()){
+      //duplicate just the first character in representative
+      tmp_representative.insert(0, 1, tmp_representative[0]);
+      int new_distance = levenshtein_distance(tmp_representative, *password);
+      if(new_distance < distance){
+        *representative = tmp_representative;
+        rad.rule = rule + std::to_string(1);
+        rad.distance = new_distance;
+        return rad;
+      }
+    }
+    else{
+      int length_diff = (*password).length() - tmp_representative.length();
+      //start by duplicating first character enough times to match lengths
+      tmp_representative.insert(0, length_diff, tmp_representative[0]);
+      std::cout << tmp_representative << std::endl;
+
+      int new_distance = levenshtein_distance(tmp_representative, *password);
+      if(new_distance < distance){
+        *representative = tmp_representative;
+        rad.rule = rule + std::to_string(length_diff);
+        rad.distance = new_distance;
+        return rad;
+      }
+      else{//loop over deleting first character
+        for(int i = 0; i < length_diff; i++){
+          tmp_representative.erase(0, 1);
+          new_distance = levenshtein_distance(tmp_representative, *password);
+          if(new_distance < distance){
+            *representative = tmp_representative;
+            rad.rule = rule + std::to_string(length_diff - i);
+            rad.distance = new_distance;
+            return rad;
+          }
+        }
+      }
+    }
+    rad.rule = "";
+    rad.distance = -1;
+    return rad;
+  }
+  else if(rule == "\'"){ //Truncate the string - cut out after index N included
+    std::string tmp_representative = *representative;
+    rule_a_distance rad;
+    
+    if(tmp_representative.length() > (*password).length()){
+      tmp_representative = tmp_representative.substr(0, (*password).length());
+      int new_distance = levenshtein_distance(tmp_representative, *password);
+      if(new_distance < distance){
+        *representative = tmp_representative;
+        rad.rule = "\'" + std::to_string(tmp_representative.length());
+        rad.distance = new_distance;
+        return rad;
+      }
+    } //TODO: try what happens if password is longer - can we make distance shorter then?
+
+    rad.rule = "";
+    rad.distance = -1;
+    return rad;
+  }
+  else if(rule == "."){ //Replace character at index N with its value + 1
+    std::string tmp_representative = *representative;
+    rule_a_distance rad;
+
+    for(int i=0; i<tmp_representative.length(); i++){
+      if(std::isdigit(tmp_representative[i]) && tmp_representative[i] != '9'){
+        tmp_representative[i] = tmp_representative[i] + 1;
+        int new_distance = levenshtein_distance(tmp_representative, *password);
+        if(new_distance < distance){
+          *representative = tmp_representative;
+          rad.rule = rule + std::to_string(i);
+          rad.distance = new_distance;
+          return rad;
+        }
+        else{
+          tmp_representative = *representative;
+        }
+      }
+    }
+
+    rad.rule = "";
+    rad.distance = -1;
+    return rad;
+  }
+  else if(rule == ","){ //Replace character at index N with its value - 1
+    std::string tmp_representative = *representative;
+    rule_a_distance rad;
+
+    for(int i=0; i<tmp_representative.length(); i++){
+      if(std::isdigit(tmp_representative[i]) && tmp_representative[i] != '0'){
+        tmp_representative[i] = tmp_representative[i] - 1;
+        int new_distance = levenshtein_distance(tmp_representative, *password);
+        if(new_distance < distance){
+          *representative = tmp_representative;
+          rad.rule = rule + std::to_string(i);
+          rad.distance = new_distance;
+          return rad;
+        }
+        else{
+          tmp_representative = *representative;
+        }
+      }
+    }
+
+    rad.rule = "";
+    rad.distance = -1;
+    return rad;
+  }
   else{
     rule_a_distance rad;
     rad.rule = "";
