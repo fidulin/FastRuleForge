@@ -559,6 +559,15 @@ rule_a_distance rule_generator::apply_rule(std::string rule, std::string *repres
         int new_distance = levenshtein_distance(tmp_representative, *password);
         if(new_distance < distance){
           *representative = tmp_representative;
+          if(i < 10){ //0-9
+            rad.rule = rule + std::to_string(i);
+          }
+          else if(i < 36){ //A-Z
+            rad.rule = rule + (char)(i + 55);
+          }
+          else{
+            break;
+          }
           rad.rule = rule + std::to_string(i);
           rad.distance = new_distance;
           return rad;
@@ -583,12 +592,72 @@ rule_a_distance rule_generator::apply_rule(std::string rule, std::string *repres
         int new_distance = levenshtein_distance(tmp_representative, *password);
         if(new_distance < distance){
           *representative = tmp_representative;
+          if(i < 10){ //0-9
+            rad.rule = rule + std::to_string(i);
+          }
+          else if(i < 36){ //A-Z
+            rad.rule = rule + (char)(i + 55);
+          }
+          else{
+            break;
+          }
           rad.rule = rule + std::to_string(i);
           rad.distance = new_distance;
           return rad;
         }
         else{
           tmp_representative = *representative;
+        }
+      }
+    }
+
+    rad.rule = "";
+    rad.distance = -1;
+    return rad;
+  }
+  else if(rule == "*"){ //Swap characters at index N and M
+    std::string tmp_representative = *representative;
+    rule_a_distance rad;
+
+    for(int i=0; i<tmp_representative.length(); i++){
+      for(int j=i+1; j<tmp_representative.length(); j++){
+        if(tmp_representative[i] != tmp_representative[j]){
+          std::swap(tmp_representative[i], tmp_representative[j]);
+          int new_distance = levenshtein_distance(tmp_representative, *password);
+          if(new_distance < distance){
+            *representative = tmp_representative;
+            std::string rule_string;
+            rule_string += rule;
+
+            //check i
+            if(i < 10){ //0-9
+              rule_string += std::to_string(i);
+            }
+            else if(i < 36){ //A-Z
+              rule_string += (char)(i + 55);
+            }
+            else{
+              break;
+            }
+
+            //check j
+            if(j < 10){ //0-9
+              rule_string += std::to_string(j);
+            }
+            else if(j < 36){ //A-Z
+              rule_string += (char)(j + 55);
+            }
+            else{
+              break;
+            }
+
+            rad.rule = rule_string;
+            rad.distance = new_distance;
+            return rad;
+          }
+          else{
+            tmp_representative = *representative;
+          }
         }
       }
     }
