@@ -700,7 +700,7 @@ std::string rule_generator::find_representative_levenshtein(std::vector<int> *cl
 
 std::string rule_generator::find_representative_levenshtein_big(std::vector<int> *cluster, GPU_executor *executor)
 {
-  int *distances;
+  float *distances;
 
   size_t global_work_size = executor->PASSWORDS_COUNT;
   

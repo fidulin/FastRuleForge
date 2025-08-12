@@ -73,7 +73,7 @@ public:
 
   int* HAC_calculate(unsigned char threshold, size_t local_work_size, size_t global_work_size);
   
-  int* calculate_distances_to(int index, unsigned char threshold, size_t global_work_size);
+  float* calculate_distances_to(int index, unsigned char threshold, size_t global_work_size);
 
   void AP_compute_matrix(float damping, int option);
 

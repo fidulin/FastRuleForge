@@ -129,7 +129,7 @@ int GPU_executor::setup(std::string kernel_main_function, bool verbose){
   handle_error(ret, __LINE__);
   bufferPointers = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, PASSWORDS_COUNT * sizeof(int), pointers_vec.data(), &ret);
   handle_error(ret, __LINE__);
-  bufferResult = clCreateBuffer(context, CL_MEM_READ_WRITE, PASSWORDS_COUNT * sizeof(int), NULL, &ret);
+  bufferResult = clCreateBuffer(context, CL_MEM_READ_WRITE, PASSWORDS_COUNT * sizeof(float), NULL, &ret);
   handle_error(ret, __LINE__);
 
   const char* kernel_src = kernelSource.c_str();
@@ -193,7 +193,7 @@ int* GPU_executor::HAC_calculate(unsigned char threshold, size_t local_work_size
   return result;
 }
 
-int* GPU_executor::calculate_distances_to(int index, unsigned char threshold, size_t global_work_size){
+float* GPU_executor::calculate_distances_to(int index, unsigned char threshold, size_t global_work_size){
   ret = clSetKernelArg(kernel, 5, sizeof(int), &index);
   handle_error(ret, __LINE__);
 
@@ -204,7 +204,7 @@ int* GPU_executor::calculate_distances_to(int index, unsigned char threshold, si
   ret = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, NULL, 0, NULL, NULL);
   handle_error(ret, __LINE__);
 
-  int* distances_array = new int[PASSWORDS_COUNT];
+  float* distances_array = new float[PASSWORDS_COUNT];
   ret = clEnqueueReadBuffer(queue, bufferResult, CL_TRUE, 0, PASSWORDS_COUNT * sizeof(int), distances_array, 0, NULL, NULL);
   handle_error(ret, __LINE__);
   clFinish(queue);

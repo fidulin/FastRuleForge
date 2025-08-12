@@ -1,50 +1,50 @@
 // FastRuleForge source code
 
-inline unsigned char levenshtein_early_exit(__global char *restrict str_x,
-                                            unsigned char len_x,
-                                            __global char *restrict str_y,
-                                            unsigned char len_y,
-                                            unsigned char threshold) {
+inline float levenshtein_early_exit(__global char *restrict str_x,
+                                          unsigned char len_x,
+                                          __global char *restrict str_y,
+                                          unsigned char len_y,
+                                          float threshold) {
 
-  if (len_x - len_y > threshold || len_y - len_x > threshold) {
-    return threshold + 1;
-  }
-  if (len_x > len_y) { 
-    __global const char *temp_str = str_x;
-    str_x = str_y;
-    str_y = temp_str;
-    unsigned char temp_len = len_x;
-    len_x = len_y;
-    len_y = temp_len;
-  }
+    if (fabs((float)len_x - (float)len_y) > threshold) {
+        return threshold + 1.0f;
+    }
+    if (len_x > len_y) {
+        __global const char *temp_str = str_x;
+        str_x = str_y;
+        str_y = temp_str;
+        unsigned char temp_len = len_x;
+        len_x = len_y;
+        len_y = temp_len;
+    }
 
-  unsigned char v0_array[32];
-  unsigned char v1_array[32];
-  unsigned char *v0 = v0_array;
-  unsigned char *v1 = v1_array;
+    float v0_array[32];
+    float v1_array[32];
+    float *v0 = v0_array;
+    float *v1 = v1_array;
 
     for (unsigned char j = 0; j <= len_y; ++j) {
-      v0[j] = j;
+        v0[j] = (float)j;
     }
 
     for (unsigned char i = 0; i < len_x; ++i) {
-        v1[0] = i + 1;
-        unsigned char row_min = 255;
+        v1[0] = (float)(i + 1);
+        float row_min = 1e9f; // Large number for min tracking
 
         for (unsigned char j = 0; j < len_y; ++j) {
-            unsigned char deletion_cost = v0[j + 1] + 1;
-            unsigned char insertion_cost = v1[j] + 1;
-            unsigned char substitution_cost = v0[j] + (str_x[i] != str_y[j]);
+            float deletion_cost = v0[j + 1] + 1.0f;
+            float insertion_cost = v1[j] + 1.0f;
+            float substitution_cost = v0[j] + ((str_x[i] != str_y[j]) ? 1.0f : 0.0f);
 
-            v1[j + 1] = min(deletion_cost, min(insertion_cost, substitution_cost));
-            row_min = min(row_min, v1[j + 1]);
+            v1[j + 1] = fmin(deletion_cost, fmin(insertion_cost, substitution_cost));
+            row_min = fmin(row_min, v1[j + 1]);
         }
 
         if (row_min > threshold) {
-            return threshold + 1;
+            return threshold + 1.0f;
         }
-        
-        unsigned char *temp = v0;
+
+        float *temp = v0;
         v0 = v1;
         v1 = temp;
     }
@@ -98,7 +98,7 @@ __kernel void HAC(__global char *strings, int string_count,
 
 __kernel void DISTANCES(__global char *strings, int string_count,
                   __global unsigned char *lengths, __global int *pointers,
-                  __global int *result,
+                  __global float *result,
                   int index, unsigned char threshold) {
 
   int password_id = get_global_id(0);

@@ -44,7 +44,7 @@ public:
     int* calculate() override {
         size_t global_work_size = PASSWORDS_COUNT;
 
-        int* distances;
+        float* distances;
 
         //Setting up results array - for each password there will be a cluster number in this array.
         //For now its all -1
@@ -126,7 +126,7 @@ public:
             int sum = 0;
 
             //distances to ALL passwords is calulated - maybe it would be quicker normally.
-            int *distances = gpu_executor->calculate_distances_to(i, t, global_work_size);
+            float *distances = gpu_executor->calculate_distances_to(i, t, global_work_size);
             for(int e : current_cluster){
                 if(i==e){
                     continue;
@@ -147,7 +147,7 @@ public:
     int* calculate() override {
         size_t global_work_size = PASSWORDS_COUNT;
 
-        int* distances;
+        float* distances;
         // The setup is same as LF.
 
         int* result = new int[PASSWORDS_COUNT];
@@ -239,7 +239,7 @@ public:
         size_t global_work_size = PASSWORDS_COUNT;
 
         std::vector<int> leaders;
-        int* distances;
+        float* distances;
 
         int* result = new int[PASSWORDS_COUNT];
         #pragma omp parallel for
@@ -342,7 +342,7 @@ public:
         size_t global_work_size = PASSWORDS_COUNT;
 
         std::vector<int> leaders;
-        int* distances;
+        float* distances;
 
         int* result = new int[PASSWORDS_COUNT];
         #pragma omp parallel for
@@ -376,7 +376,7 @@ public:
     int* calculate() override {
         size_t global_work_size = PASSWORDS_COUNT;
 
-        int* distances;
+        float* distances;
         std::stack<int> stack;
 
         int* result = new int[PASSWORDS_COUNT];
@@ -627,7 +627,7 @@ public:
     int* calculate() override{
         size_t global_work_size = PASSWORDS_COUNT;
 
-        int* distances;
+        float* distances;
 
         int* result = new int[PASSWORDS_COUNT];
         #pragma omp parallel for
