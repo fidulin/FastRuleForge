@@ -1,55 +1,112 @@
 // FastRuleForge source code
 
 inline float levenshtein_early_exit(__global char *restrict str_x,
-                                          unsigned char len_x,
-                                          __global char *restrict str_y,
-                                          unsigned char len_y,
-                                          float threshold) {
+            unsigned char len_x,
+            __global char *restrict str_y,
+            unsigned char len_y,
+            float threshold) {
+  
+  const float locality_coef = 0.1f; // penalty coefficient per unit distance between consecutive edits
 
-    if (fabs((float)len_x - (float)len_y) > threshold) {
-        return threshold + 1.0f;
+  // We subtract 1 from the final distance, so only early-exit if the base
+  // distance is guaranteed to be > threshold + 1 (so final > threshold).
+  const float exit_guard = threshold + locality_coef;
+
+  if (fabs((float)len_x - (float)len_y) > exit_guard) {
+  return threshold + locality_coef;
+  }
+  if (len_x > len_y) {
+  __global const char *temp_str = str_x;
+  str_x = str_y;
+  str_y = temp_str;
+  unsigned char temp_len = len_x;
+  len_x = len_y;
+  len_y = temp_len;
+  }
+
+
+  float v0_array[32];
+  float v1_array[32];
+  float *v0 = v0_array;
+  float *v1 = v1_array;
+
+  int last0_array[32];
+  int last1_array[32];
+  int *last0 = last0_array;
+  int *last1 = last1_array;
+
+  for (unsigned char j = 0; j <= len_y; ++j) {
+  v0[j] = (float)j;
+  last0[j] = (j == 0) ? -1 : (int)j - 1; // base path: chain of insertions up to j
+  }
+
+  for (unsigned char i = 0; i < len_x; ++i) {
+  v1[0] = (float)(i + 1);
+  last1[0] = (i == 0) ? -1 : 0; // base path: chain of deletions, use position 0 for first y index
+  float row_min = 1e9f; // Large number for min tracking
+
+  for (unsigned char j = 0; j < len_y; ++j) {
+    const char xi = str_x[i];
+    const char yj = str_y[j];
+    const int curr_pos = (int)j;
+    const int prev_pos_sub = last0[j];
+    const int prev_pos_del = last0[j + 1];
+    const int prev_pos_ins = last1[j];
+
+    // compute penalties only if there was a previous edit
+    const float pen_sub = (xi != yj && prev_pos_sub >= 0) ? locality_coef * fabs((float)(curr_pos - prev_pos_sub)) : 0.0f;
+    const float pen_del = (prev_pos_del >= 0) ? locality_coef * fabs((float)(curr_pos - prev_pos_del)) : 0.0f;
+    const float pen_ins = (prev_pos_ins >= 0) ? locality_coef * fabs((float)(curr_pos - prev_pos_ins)) : 0.0f;
+
+    const float deletion_cost     = v0[j + 1] + 1.0f + pen_del;                             // from (i-1, j+1)
+    const float insertion_cost    = v1[j]     + 1.0f + pen_ins;                             // from (i,   j)
+    const float substitution_cost = v0[j]     + ((xi != yj) ? (1.0f + pen_sub) : 0.0f);     // from (i-1, j)
+
+    // choose best and track last edit position
+    float best = deletion_cost;
+    int   best_last = prev_pos_del;
+    int   best_op = 2; // 0=sub,1=ins,2=del
+
+    if (insertion_cost < best) {
+    best = insertion_cost;
+    best_last = prev_pos_ins;
+    best_op = 1;
     }
-    if (len_x > len_y) {
-        __global const char *temp_str = str_x;
-        str_x = str_y;
-        str_y = temp_str;
-        unsigned char temp_len = len_x;
-        len_x = len_y;
-        len_y = temp_len;
+    if (substitution_cost < best) {
+    best = substitution_cost;
+    best_last = prev_pos_sub;
+    best_op = 0;
     }
 
-    float v0_array[32];
-    float v1_array[32];
-    float *v0 = v0_array;
-    float *v1 = v1_array;
+    v1[j + 1] = best;
 
-    for (unsigned char j = 0; j <= len_y; ++j) {
-        v0[j] = (float)j;
+    // update last edit position for the chosen path
+    if (best_op == 0) { // substitution/match
+    if (xi != yj) {
+      last1[j + 1] = curr_pos; // an edit at current position
+    } else {
+      last1[j + 1] = best_last; // no edit, carry previous
+    }
+    } else {
+    // insertion or deletion always an edit
+    last1[j + 1] = curr_pos;
     }
 
-    for (unsigned char i = 0; i < len_x; ++i) {
-        v1[0] = (float)(i + 1);
-        float row_min = 1e9f; // Large number for min tracking
+    row_min = fmin(row_min, v1[j + 1]);
+  }
 
-        for (unsigned char j = 0; j < len_y; ++j) {
-            float deletion_cost = v0[j + 1] + 1.0f;
-            float insertion_cost = v1[j] + 1.0f;
-            float substitution_cost = v0[j] + ((str_x[i] != str_y[j]) ? 1.0f : 0.0f);
+  if (row_min > exit_guard) {
+    return threshold + locality_coef;
+  }
 
-            v1[j + 1] = fmin(deletion_cost, fmin(insertion_cost, substitution_cost));
-            row_min = fmin(row_min, v1[j + 1]);
-        }
+  // swap rows
+  float *temp = v0; v0 = v1; v1 = temp;
+  int *tempI = last0; last0 = last1; last1 = tempI;
+  }
 
-        if (row_min > threshold) {
-            return threshold + 1.0f;
-        }
-
-        float *temp = v0;
-        v0 = v1;
-        v1 = temp;
-    }
-
-    return v0[len_y];
+  // Subtract coefitient from final distance and clamp to 0
+  float dist = v0[len_y] - locality_coef;
+  return (dist < 0.0f) ? 0.0f : dist;
 }
 
 //HACFAST
@@ -120,6 +177,7 @@ __kernel void DISTANCES(__global char *strings, int string_count,
     unsigned char my_length = lengths[password_id];
 
     result[password_id] = levenshtein_early_exit(my_string, my_length, strings + pointers[index], lengths[index], threshold);
+    //printf("Distance from %d to %d: %f\n", password_id, index, result[password_id]);
   }
   else{
     result[password_id] = 0;
