@@ -1,5 +1,7 @@
 // FastRuleForge source code
 
+#include <algorithm>
+
 #include "args_handler.hh"
 
 void print_help(){
@@ -9,6 +11,11 @@ void print_help(){
     std::cout << "Use --verbose or --v for verbose output" << std::endl;
     exit(0);
 }
+
+bool args_handler::is_method_selected(const char* method) const{
+    return std::find(method_names.begin(),method_names.end(),method) != method_names.end();
+}
+
 void args_handler::parse_args(int argc, char *argv[]){
     std::vector<std::string> args(argv, argv + argc);
     if(argc < 5){
@@ -44,9 +51,11 @@ void args_handler::parse_args(int argc, char *argv[]){
             }
         }
         else if(args[i] == "--LF"){
-            method_name = "LF";
+            if (is_method_selected("LF")){
+                throw std::runtime_error("Cannot use method more than once.");
+            }
+            method_names.push_back("LF");
             method_set = true;
-            kernel_main_function = "DISTANCES";
             if(i+1 < argc){
                 try{
                     int number1 = std::stoi(args[i+1]);
@@ -61,9 +70,11 @@ void args_handler::parse_args(int argc, char *argv[]){
             }
         }
         else if(args[i] == "--LFC"){
-            method_name = "LFC";
+            if (is_method_selected("LFC")){
+                throw std::runtime_error("Cannot use method more than once.");
+            }
+            method_names.push_back("LFC");
             method_set = true;
-            kernel_main_function = "DISTANCES";
             if(i+1 < argc){
                 try{
                     int number1 = std::stoi(args[i+1]);
@@ -78,7 +89,10 @@ void args_handler::parse_args(int argc, char *argv[]){
             }
         }
         else if(args[i] == "--MLF"){
-            method_name = "MLF";
+            if (is_method_selected("MLF")){
+                throw std::runtime_error("Cannot use method more than once.");
+            }
+            method_names.push_back("MLF");
             method_set = true;
             if(i+3 < argc){
                 try{
@@ -98,7 +112,10 @@ void args_handler::parse_args(int argc, char *argv[]){
             }
         }
         else if(args[i] == "--DBSCAN"){
-            method_name = "DBSCAN";
+            if (is_method_selected("DBSCAN")){
+                throw std::runtime_error("Cannot use method more than once.");
+            }
+            method_names.push_back("DBSCAN");
             method_set = true;
             if(i+2 < argc){
                 try{
@@ -116,7 +133,10 @@ void args_handler::parse_args(int argc, char *argv[]){
             }
         }
         else if(args[i] == "--MDBSCAN"){
-            method_name = "MDBSCAN";
+            if (is_method_selected("MDBSCAN")){
+                throw std::runtime_error("Cannot use method more than once.");
+            }
+            method_names.push_back("MDBSCAN");
             method_set = true;
             if(i+3 < argc){
                 try{
@@ -136,9 +156,11 @@ void args_handler::parse_args(int argc, char *argv[]){
             }
         }
         else if(args[i] == "--HACFAST"){
-            method_name = "HACFAST";
+            if (is_method_selected("HACFAST")){
+                throw std::runtime_error("Cannot use method more than once.");
+            }
+            method_names.push_back("HACFAST");
             method_set = true;
-            kernel_main_function = "HAC";
             if(i+1 < argc){
                 try{
                     int number1 = std::stoi(args[i+1]);
@@ -153,9 +175,11 @@ void args_handler::parse_args(int argc, char *argv[]){
             }
         }
         else if(args[i] == "--HAC"){
-            method_name = "HAC";
+            if (is_method_selected("HAC")){
+                throw std::runtime_error("Cannot use method more than once.");
+            }
+            method_names.push_back("HAC");
             method_set = true;
-            kernel_main_function = "DISTANCES";
             if(i+1 < argc){
                 try{
                     int number1 = std::stoi(args[i+1]);
@@ -170,9 +194,11 @@ void args_handler::parse_args(int argc, char *argv[]){
             }
         }
         else if(args[i] == "--AP"){
-            method_name = "AP";
+            if (is_method_selected("AP")){
+                throw std::runtime_error("Cannot use method more than once.");
+            }
+            method_names.push_back("AP");
             method_set = true;
-            kernel_main_function = "AP";
             if(i+2 < argc){
                 try{
                     int number1 = std::stoi(args[i+1]);
@@ -189,7 +215,10 @@ void args_handler::parse_args(int argc, char *argv[]){
             }
         }
         else if(args[i] == "--RANDOM"){
-            method_name = "RANDOM";
+            if (is_method_selected("RANDOM")){
+                throw std::runtime_error("Cannot use method more than once.");
+            }
+            method_names.push_back("RANDOM");
             method_set = true;
         }
         else if(args[i] == "--N"){
@@ -268,7 +297,13 @@ void args_handler::parse_args(int argc, char *argv[]){
     return;
 }
 
-std::unique_ptr<clustering_method> args_handler::get_method(){
+std::unique_ptr<clustering_method> args_handler::get_method(int index){
+    if (index < 0 || index >= get_method_count()){
+        throw std::runtime_error("Selected method index is out of range.");
+    }
+    
+    std::string method_name = method_names[index];
+    
     if(method_name == "LF"){
         return std::make_unique<LF>(threshold, randomize);
     }
@@ -298,3 +333,44 @@ std::unique_ptr<clustering_method> args_handler::get_method(){
     }
     throw std::runtime_error("Unknown clustering method: " + method_name);
   }
+
+std::string args_handler::get_kernel_main_function_for_method(int index) const{
+    if (index < 0 || index >= get_method_count()){
+        throw std::runtime_error("Selected method index is out of range.");
+    }
+    
+    std::string method_name = method_names[index];
+
+    if(method_name == "LF"){
+        return "DISTANCES";
+    }
+    else if(method_name == "LFC"){
+        return "DISTANCES";
+    }
+    else if(method_name == "MLF"){
+        return "DISTANCES";
+    }
+    else if(method_name == "DBSCAN"){
+        return "DISTANCES";
+    }
+    else if(method_name == "MDBSCAN"){
+        return "DISTANCES";
+    }
+    else if(method_name == "HACFAST"){
+        return "HAC";
+    }
+    else if(method_name == "HAC"){
+        return "DISTANCES";
+    }
+    else if(method_name == "AP"){
+        return "AP";
+    }
+    else if(method_name == "RANDOM"){
+        return "DISTANCES";
+    }
+    throw std::runtime_error("Unknown clustering method: " + method_name);
+}
+
+int args_handler::get_method_count() const {
+    return method_names.size();
+}

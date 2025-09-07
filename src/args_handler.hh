@@ -17,7 +17,7 @@ public:
     std::string input_filename;
     std::string output_filename;
 
-    std::string method_name = "MDBSCAN";
+    std::vector<std::string> method_names;
     unsigned char threshold = 3;
 
     unsigned char threshold_main = 2;
@@ -45,10 +45,12 @@ public:
 
     std::vector<std::string> rules = {":", "l", "u", "c", "t", "T", "$", "^", "[", "]", "z", "Z", "D", "i", "o", "s", "}", "{", "r", "Y", "\'", "y", ",", ".", "*"};
 
-
-    std::string kernel_main_function = "DISTANCES";
-
     void parse_args(int argc, char *argv[]);
 
-    std::unique_ptr<clustering_method> get_method();
+    std::unique_ptr<clustering_method> get_method(int);
+    std::string get_method_name(int) const;
+    int get_method_count() const;
+    std::string get_kernel_main_function_for_method(int) const;
+
+    bool is_method_selected(const char *) const;
 };
