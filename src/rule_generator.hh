@@ -12,7 +12,6 @@
 #include <iostream>
 #include <unordered_map>
 #include <climits>
-#include <omp.h>
 
 
 struct rule_a_distance{

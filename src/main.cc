@@ -9,7 +9,6 @@
 #include <ostream>
 #include <vector>
 #include <algorithm>
-#include <omp.h>
 #include <set>
 #include <string>
 

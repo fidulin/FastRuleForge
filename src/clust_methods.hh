@@ -8,7 +8,6 @@
 #include <algorithm>
 #include <queue>
 #include <stack>
-#include <omp.h>
 #include <atomic>
 #include "GPU_executor.hh"
 #include "utils.hh"

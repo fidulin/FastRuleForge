@@ -1,10 +1,14 @@
 #generic makefile for fastruleforge
-CXX = g++
-CXXFLAGS = -fopenmp -std=c++14 -MMD -MP
-LDFLAGS = -lOpenCL
+CXX = clang++
+CXXFLAGS = -std=c++17 -MMD -MP -fmodules
+CPPFLAGS = -I./libs/metal-cpp
+OBJCPPFLAGS = -fobjc-arc
+LDFLAGS = -framework Foundation -framework Metal -framework QuartzCore
 
-SRCS = src/main.cc src/GPU_executor.cc src/rule_generator.cc src/args_handler.cc src/utils.cc
-OBJS = $(SRCS:src/%.cc=build/%.o)
+SRCS_CC = src/main.cc src/GPU_executor.cc src/rule_generator.cc src/args_handler.cc src/utils.cc
+SRCS_MM = src/metal_cpp.mm
+SRCS = $(SRCS_CC) $(SRCS_MM)
+OBJS = $(SRCS_CC:src/%.cc=build/%.o) $(SRCS_MM:src/%.mm=build/%.o)
 DEPS = $(OBJS:.o=.d)
 
 TARGET = fastruleforge
@@ -14,9 +18,13 @@ $(TARGET): $(OBJS)
 
 build/%.o: src/%.cc
 	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -c $< -o $@
+
+build/%.o: src/%.mm
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(OBJCPPFLAGS) -c $< -o $@
 
 -include $(DEPS)
 
 clean:
-	rm -f $(TARGET) $(OBJS) $(DEPS)
+	rm -rf $(TARGET) build

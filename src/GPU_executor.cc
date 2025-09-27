@@ -1,7 +1,7 @@
 // FastRuleForge source code
 
 #include "GPU_executor.hh"
-#include <CL/cl.h>
+
 #include <exception>
 #include <iostream>
 #include <ostream>
@@ -78,160 +78,134 @@ int GPU_executor::process_input(std::string filename, bool verbose){
 }
 
 int GPU_executor::setup(std::string kernel_main_function, bool verbose){
-  ret = clGetPlatformIDs(10, platforms, &platforms_num);
-  handle_error(ret, __LINE__);
-  
-  bool found = false;
-  for(int i=0; i<platforms_num; i++){
-    ret = clGetDeviceIDs(platforms[i], CL_DEVICE_TYPE_GPU, 1, &device, &devices_num);
-    if(ret == CL_SUCCESS){
-      found = true;
-      char name[256];
-      clGetDeviceInfo(device, CL_DEVICE_NAME, sizeof(name), name, NULL);
-      if(verbose){
-        std::cout << "Using GPU device: " << name << std::endl;
-      }
-      break;
+    _mDevice = MTL::CreateSystemDefaultDevice();
+    if(!_mDevice){
+        std::cerr << "Failed to create Metal device." << std::endl;
+        return -1;
     }
-  }
-  if(!found){
+
     if(verbose){
-      std::cout << "Warning: GPU not found" << std::endl;
+        std::cout << "Using GPU device: " << _mDevice->name()->utf8String() << std::endl;
     }
-    for(int i=0; i<platforms_num; i++){
-      ret = clGetDeviceIDs(platforms[i], CL_DEVICE_TYPE_CPU, 1, &device, &devices_num);
-      if(ret == CL_SUCCESS){
-        found = true;
-        char name[256];
-        clGetDeviceInfo(device, CL_DEVICE_NAME, sizeof(name), name, NULL);
-        if(1){
-          std::cout << "Warning: using CPU device: |" << name << "|, this may affect performance" << std::endl;
-        }
-        
-        break;
-      }
+
+    _mCommandQueue = _mDevice->newCommandQueue();
+    if(!_mCommandQueue){
+        std::cerr << "Failed to create command queue." << std::endl;
+        return -1;
     }
-  }
-  if(!found){
-    std::cout << "NO DEVICE TO RUN OPENCL FOUND, SHUTTING DOWN" << std::endl;
-    return -1;
-  }
-  handle_error(ret, __LINE__);
-  
-  context = clCreateContext(NULL, 1, &device, NULL, NULL, &ret);
-  handle_error(ret, __LINE__);
-  queue = clCreateCommandQueueWithProperties(context, device, 0, &ret);
-  handle_error(ret, __LINE__);
-  
-  bufferStrings = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, total_length * sizeof(char), concatenated_string, &ret);
-  handle_error(ret, __LINE__);
-  bufferLengths = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, PASSWORDS_COUNT * sizeof(unsigned char), lengths_vec.data(), &ret);
-  handle_error(ret, __LINE__);
-  bufferPointers = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, PASSWORDS_COUNT * sizeof(int), pointers_vec.data(), &ret);
-  handle_error(ret, __LINE__);
-  bufferResult = clCreateBuffer(context, CL_MEM_READ_WRITE, PASSWORDS_COUNT * sizeof(int), NULL, &ret);
-  handle_error(ret, __LINE__);
 
-  const char* kernel_src = kernelSource.c_str();
-  program = clCreateProgramWithSource(context, 1, &kernel_src, NULL, &ret);
-  ret = clBuildProgram(program, 1, &device, NULL, NULL, NULL);
-  
+    NS::Error* pError = nullptr;
+    _mLibrary = _mDevice->newLibrary(NS::String::string(kernelSource.c_str(), NS::UTF8StringEncoding), nullptr, &pError);
+    handle_error(pError, __LINE__);
 
-  if(false){ //for debugging
-    size_t log_size;
-    clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
-    char *log = (char *)malloc(log_size);
-    clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, log_size, log, NULL);
-    printf("Build Log:\n%s\n", log);
-    free(log);
-  }
-  handle_error(ret, __LINE__);
-  
-  const char* kernel_main_function_cstr = kernel_main_function.c_str();
-  kernel = clCreateKernel(program, kernel_main_function_cstr, &ret);
+    _mFunction = _mLibrary->newFunction(NS::String::string(kernel_main_function.c_str(), NS::UTF8StringEncoding));
+    if(!_mFunction){
+        std::cerr << "Failed to create function state." << std::endl;
+        return -1;
+    }
 
-  ret = clSetKernelArg(kernel, 0, sizeof(cl_mem), &bufferStrings);
-  handle_error(ret, __LINE__);
-  ret = clSetKernelArg(kernel, 1, sizeof(int), &PASSWORDS_COUNT);
-  handle_error(ret, __LINE__);
-  ret = clSetKernelArg(kernel, 2, sizeof(cl_mem), &bufferLengths);
-  handle_error(ret, __LINE__);
-  ret = clSetKernelArg(kernel, 3, sizeof(cl_mem), &bufferPointers);
-  handle_error(ret, __LINE__);
-  ret = clSetKernelArg(kernel, 4, sizeof(cl_mem), &bufferResult);
-  handle_error(ret, __LINE__);
+    _mPipelineState = _mDevice->newComputePipelineState(_mFunction, &pError);
+    handle_error(pError, __LINE__);
 
-  //trz to find optimal work group size
-  clGetKernelWorkGroupInfo(
-    kernel, device,
-    CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE,
-    sizeof(size_t), &preferred_multiple, NULL);
+    _mBufferStrings = _mDevice->newBuffer(concatenated_string, total_length * sizeof(char), MTL::ResourceStorageModeShared);
+    _mBufferLengths = _mDevice->newBuffer(lengths_vec.data(), PASSWORDS_COUNT * sizeof(unsigned char), MTL::ResourceStorageModeShared);
+    _mBufferPointers = _mDevice->newBuffer(pointers_vec.data(), PASSWORDS_COUNT * sizeof(int), MTL::ResourceStorageModeShared);
+    _mBufferResult = _mDevice->newBuffer(PASSWORDS_COUNT * sizeof(int), MTL::ResourceStorageModeShared);
 
-  return 0;
+    preferred_multiple = _mPipelineState->threadExecutionWidth();
+
+    return 0;
 }
 
 int* GPU_executor::HAC_calculate(unsigned char threshold, size_t local_work_size, size_t global_work_size){
-  ret = clSetKernelArg(kernel, 5, sizeof(unsigned char), &threshold);
-  handle_error(ret, __LINE__);
+    int* result = new int[PASSWORDS_COUNT];
+    memset(result, 0, PASSWORDS_COUNT * sizeof(int));
+    memcpy(_mBufferResult->contents(), result, PASSWORDS_COUNT * sizeof(int));
 
-  int* result = new int[PASSWORDS_COUNT];
-  for(int i = 0; i < PASSWORDS_COUNT; i++){
-    result[i] = 0;
-  }
-  ret = clEnqueueWriteBuffer(queue, bufferResult, CL_TRUE, 0, PASSWORDS_COUNT * sizeof(int), result, 0, NULL, NULL);
-  handle_error(ret, __LINE__);
+    MTL::CommandBuffer* pCommandBuffer = _mCommandQueue->commandBuffer();
+    MTL::ComputeCommandEncoder* pComputeEncoder = pCommandBuffer->computeCommandEncoder();
 
-  local_work_size = 512;
-  global_work_size = ((PASSWORDS_COUNT + preferred_multiple - 1) / preferred_multiple) * preferred_multiple;
-  ret = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, NULL, 0, NULL, NULL);
-  handle_error(ret, __LINE__);
-  clFinish(queue);
-  
-  ret = clEnqueueReadBuffer(queue, bufferResult, CL_TRUE, 0, PASSWORDS_COUNT * sizeof(int), result, 0, NULL, NULL);
-  handle_error(ret, __LINE__);
+    pComputeEncoder->setComputePipelineState(_mPipelineState);
+    pComputeEncoder->setBuffer(_mBufferStrings, 0, 0);
+    pComputeEncoder->setBytes(&PASSWORDS_COUNT, sizeof(int), 1);
+    pComputeEncoder->setBuffer(_mBufferLengths, 0, 2);
+    pComputeEncoder->setBuffer(_mBufferPointers, 0, 3);
+    pComputeEncoder->setBuffer(_mBufferResult, 0, 4);
+    pComputeEncoder->setBytes(&threshold, sizeof(unsigned char), 5);
 
-  return result;
+    MTL::Size gridSize = MTL::Size::Make(PASSWORDS_COUNT, 1, 1);
+    NS::UInteger threadGroupSize = _mPipelineState->maxTotalThreadsPerThreadgroup();
+    if (threadGroupSize > PASSWORDS_COUNT) {
+        threadGroupSize = PASSWORDS_COUNT;
+    }
+    MTL::Size threadgroupSize = MTL::Size::Make(threadGroupSize, 1, 1);
+
+    pComputeEncoder->dispatchThreads(gridSize, threadgroupSize);
+    pComputeEncoder->endEncoding();
+    pCommandBuffer->commit();
+    pCommandBuffer->waitUntilCompleted();
+
+    memcpy(result, _mBufferResult->contents(), PASSWORDS_COUNT * sizeof(int));
+
+    return result;
 }
 
 int* GPU_executor::calculate_distances_to(int index, unsigned char threshold, size_t global_work_size){
-  ret = clSetKernelArg(kernel, 5, sizeof(int), &index);
-  handle_error(ret, __LINE__);
+    MTL::CommandBuffer* pCommandBuffer = _mCommandQueue->commandBuffer();
+    MTL::ComputeCommandEncoder* pComputeEncoder = pCommandBuffer->computeCommandEncoder();
 
-  ret = clSetKernelArg(kernel, 6, sizeof(unsigned char), &threshold);
-  handle_error(ret, __LINE__);
+    pComputeEncoder->setComputePipelineState(_mPipelineState);
+    pComputeEncoder->setBuffer(_mBufferStrings, 0, 0);
+    pComputeEncoder->setBytes(&PASSWORDS_COUNT, sizeof(int), 1);
+    pComputeEncoder->setBuffer(_mBufferLengths, 0, 2);
+    pComputeEncoder->setBuffer(_mBufferPointers, 0, 3);
+    pComputeEncoder->setBuffer(_mBufferResult, 0, 4);
+    pComputeEncoder->setBytes(&index, sizeof(int), 5);
+    pComputeEncoder->setBytes(&threshold, sizeof(unsigned char), 6);
 
-  global_work_size = ((PASSWORDS_COUNT + preferred_multiple - 1) / preferred_multiple) * preferred_multiple;
-  ret = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, NULL, 0, NULL, NULL);
-  handle_error(ret, __LINE__);
+    MTL::Size gridSize = MTL::Size::Make(PASSWORDS_COUNT, 1, 1);
+    NS::UInteger threadGroupSize = _mPipelineState->maxTotalThreadsPerThreadgroup();
+    if (threadGroupSize > PASSWORDS_COUNT) {
+        threadGroupSize = PASSWORDS_COUNT;
+    }
+    MTL::Size threadgroupSize = MTL::Size::Make(threadGroupSize, 1, 1);
 
-  int* distances_array = new int[PASSWORDS_COUNT];
-  ret = clEnqueueReadBuffer(queue, bufferResult, CL_TRUE, 0, PASSWORDS_COUNT * sizeof(int), distances_array, 0, NULL, NULL);
-  handle_error(ret, __LINE__);
-  clFinish(queue);
+    pComputeEncoder->dispatchThreads(gridSize, threadgroupSize);
+    pComputeEncoder->endEncoding();
+    pCommandBuffer->commit();
+    pCommandBuffer->waitUntilCompleted();
 
-  return distances_array;
+    int* distances_array = new int[PASSWORDS_COUNT];
+    memcpy(distances_array, _mBufferResult->contents(), PASSWORDS_COUNT * sizeof(int));
+
+    return distances_array;
 }
 
 
 void GPU_executor::AP_compute_matrix(float damping, int option){
-  size_t local_work_size[2] = {32, 32};
-  size_t global_work_size[2] = {
-    ((PASSWORDS_COUNT + local_work_size[0] - 1) / local_work_size[0]) * local_work_size[0], 
-    ((PASSWORDS_COUNT + local_work_size[1] - 1) / local_work_size[1]) * local_work_size[1]
-  };
+    MTL::CommandBuffer* pCommandBuffer = _mCommandQueue->commandBuffer();
+    MTL::ComputeCommandEncoder* pComputeEncoder = pCommandBuffer->computeCommandEncoder();
 
-  ret = clSetKernelArg(kernel, 4, sizeof(cl_mem), &bufferSimilarity);
-  handle_error(ret, __LINE__);
-  ret = clSetKernelArg(kernel, 5, sizeof(cl_mem), &bufferResponsibility);
-  handle_error(ret, __LINE__);
-  ret = clSetKernelArg(kernel, 6, sizeof(cl_mem), &bufferAvailability);
-  handle_error(ret, __LINE__);
-  ret = clSetKernelArg(kernel, 7, sizeof(float), &damping);
-  handle_error(ret, __LINE__);
-  ret = clSetKernelArg(kernel, 8, sizeof(int), &option);
+    pComputeEncoder->setComputePipelineState(_mPipelineState);
+    pComputeEncoder->setBuffer(_mBufferStrings, 0, 0);
+    pComputeEncoder->setBytes(&PASSWORDS_COUNT, sizeof(int), 1);
+    pComputeEncoder->setBuffer(_mBufferLengths, 0, 2);
+    pComputeEncoder->setBuffer(_mBufferPointers, 0, 3);
+    pComputeEncoder->setBuffer(_mBufferSimilarity, 0, 4);
+    pComputeEncoder->setBuffer(_mBufferResponsibility, 0, 5);
+    pComputeEncoder->setBuffer(_mBufferAvailability, 0, 6);
+    pComputeEncoder->setBytes(&damping, sizeof(float), 7);
+    pComputeEncoder->setBytes(&option, sizeof(int), 8);
 
-  ret = clEnqueueNDRangeKernel(queue, kernel, 2, NULL, global_work_size, local_work_size, 0, NULL, NULL);
-  handle_error(ret, __LINE__);
+    MTL::Size gridSize = MTL::Size::Make(PASSWORDS_COUNT, PASSWORDS_COUNT, 1);
+    NS::UInteger w = _mPipelineState->threadExecutionWidth();
+    NS::UInteger h = _mPipelineState->maxTotalThreadsPerThreadgroup() / w;
+    MTL::Size threadgroupSize = MTL::Size::Make(w, h, 1);
+
+    pComputeEncoder->dispatchThreads(gridSize, threadgroupSize);
+    pComputeEncoder->endEncoding();
+    pCommandBuffer->commit();
+    pCommandBuffer->waitUntilCompleted();
 }
 
 int* GPU_executor::AP_calculate(int iter, float lambda) {
@@ -245,26 +219,16 @@ int* GPU_executor::AP_calculate(int iter, float lambda) {
     A[i] = 0.0f;
   }
 
-  int option = 0;
-
-  int size = N * (N - 1) / 2;
-  std::vector<float> tmpS;
-
-  bufferSimilarity = clCreateBuffer(context, CL_MEM_READ_WRITE, PASSWORDS_COUNT * PASSWORDS_COUNT * sizeof(float), NULL, &ret);
-  handle_error(ret, __LINE__);
-
-  bufferAvailability = clCreateBuffer(context, CL_MEM_READ_WRITE, PASSWORDS_COUNT * PASSWORDS_COUNT * sizeof(float), NULL, &ret);
-  handle_error(ret, __LINE__);
-
-  bufferResponsibility = clCreateBuffer(context, CL_MEM_READ_WRITE, PASSWORDS_COUNT * PASSWORDS_COUNT * sizeof(float), NULL, &ret);
-  handle_error(ret, __LINE__);
+  _mBufferSimilarity = _mDevice->newBuffer(N * N * sizeof(float), MTL::ResourceStorageModeShared);
+  _mBufferResponsibility = _mDevice->newBuffer(N * N * sizeof(float), MTL::ResourceStorageModeShared);
+  _mBufferAvailability = _mDevice->newBuffer(N * N * sizeof(float), MTL::ResourceStorageModeShared);
 
   AP_compute_matrix(lambda, 0); //option 0 for computing similarity matrix
 
-  ret = clEnqueueReadBuffer(queue, bufferSimilarity, CL_TRUE, 0, PASSWORDS_COUNT * PASSWORDS_COUNT * sizeof(float), S, 0, NULL, NULL);
-  handle_error(ret, __LINE__);
+  memcpy(S, _mBufferSimilarity->contents(), N * N * sizeof(float));
   
   //compute similarity between data point i and j
+  std::vector<float> tmpS;
   for (int i = 0; i < N - 1; i++) {
     for (int j = i + 1; j < N; j++) {
       tmpS.push_back(S[i*N + j]);
@@ -274,37 +238,32 @@ int* GPU_executor::AP_calculate(int iter, float lambda) {
   
   //set diagonal of simmilarity matrix to median
   float median;
-  if(size % 2 == 0){
-    float mid1 = tmpS[size / 2];
-    float mid2 = tmpS[size / 2 - 1];
-    median = (mid1 + mid2) / 2.0f;
+  int size = tmpS.size();
+  if(size > 0) {
+    if(size % 2 == 0){
+      float mid1 = tmpS[size / 2];
+      float mid2 = tmpS[size / 2 - 1];
+      median = (mid1 + mid2) / 2.0f;
+    }
+    else{
+      median = tmpS[size / 2];
+    }
+  } else {
+    median = 0;
   }
-  else{
-    median = tmpS[size / 2];
-  }
+
 
   for (int i = 0; i < N; i++) {
     S[i * PASSWORDS_COUNT + i] = median;
   }
 
-
-  //std::cout << "Simmilarity computed" << std::endl;
-
-  ret = clEnqueueWriteBuffer(queue, bufferSimilarity, CL_TRUE, 0, PASSWORDS_COUNT * PASSWORDS_COUNT * sizeof(float), S, 0, NULL, NULL);
-  handle_error(ret, __LINE__);
+  memcpy(_mBufferSimilarity->contents(), S, N * N * sizeof(float));
   
   // Run Affinity Propagation
   for (int m = 0; m < iter; m++) {
     AP_compute_matrix(lambda, 1);
-    clFinish(queue);
-
-    ret = clEnqueueReadBuffer(queue, bufferResponsibility, CL_TRUE, 0, PASSWORDS_COUNT * PASSWORDS_COUNT * sizeof(float), R, 0, NULL, NULL);
-    handle_error(ret, __LINE__);
-    clFinish(queue);
-
-    ret = clEnqueueReadBuffer(queue, bufferAvailability, CL_TRUE, 0, PASSWORDS_COUNT * PASSWORDS_COUNT * sizeof(float), A, 0, NULL, NULL);
-    handle_error(ret, __LINE__);
-    clFinish(queue);
+    memcpy(R, _mBufferResponsibility->contents(), N * N * sizeof(float));
+    memcpy(A, _mBufferAvailability->contents(), N * N * sizeof(float));
   }
   
   std::vector<int> exemplars;
@@ -315,59 +274,58 @@ int* GPU_executor::AP_calculate(int iter, float lambda) {
   }
   
   int* clusterAssignment = new int[N];
-  int exemplarToClusterID[PASSWORDS_COUNT];
-  for (int i = 0; i < PASSWORDS_COUNT; i++) {
-    exemplarToClusterID[i] = -1;
-  }
+  std::map<int, int> exemplarToClusterID;
   int nextClusterID = 0;
 
   for (int i = 0; i < N; i++) {
-    float max = -1e100;
+    float max_val = -std::numeric_limits<float>::infinity();
     int bestExemplar = -1;
 
-    for (int j = 0; j < exemplars.size(); j++) {
-      int ex = exemplars[j];
+    for (int ex : exemplars) {
       float sim = S[i * PASSWORDS_COUNT + ex];
-
-      if (sim > max) {
-        max = sim;
+      if (sim > max_val) {
+        max_val = sim;
         bestExemplar = ex;
       }
     }
-
-    if (exemplarToClusterID[bestExemplar] == -1) {
-      exemplarToClusterID[bestExemplar] = nextClusterID;
-      nextClusterID++;
+    
+    if (bestExemplar != -1) {
+        if (exemplarToClusterID.find(bestExemplar) == exemplarToClusterID.end()) {
+            exemplarToClusterID[bestExemplar] = nextClusterID++;
+        }
+        clusterAssignment[i] = exemplarToClusterID[bestExemplar];
+    } else {
+        clusterAssignment[i] = -1; // No suitable exemplar found
     }
-
-    clusterAssignment[i] = exemplarToClusterID[bestExemplar];
   }
 
   delete[] S;
   delete[] R;
   delete[] A;
-  clReleaseMemObject(bufferSimilarity);
-  clReleaseMemObject(bufferResponsibility);
-  clReleaseMemObject(bufferAvailability);
+  _mBufferSimilarity->release();
+  _mBufferResponsibility->release();
+  _mBufferAvailability->release();
   return clusterAssignment;
 }
 
 int GPU_executor::clean(){
-  clReleaseMemObject(bufferStrings);
-  clReleaseMemObject(bufferLengths);
-  clReleaseMemObject(bufferPointers);
-  clReleaseMemObject(bufferResult);
-  clReleaseKernel(kernel);
-  clReleaseProgram(program);
-  clReleaseCommandQueue(queue);
-  clReleaseContext(context);
+    _mBufferStrings->release();
+    _mBufferLengths->release();
+    _mBufferPointers->release();
+    _mBufferResult->release();
 
-  return 0;
+    _mPipelineState->release();
+    _mFunction->release();
+    _mLibrary->release();
+    _mCommandQueue->release();
+    _mDevice->release();
+
+    return 0;
 }
 
-void GPU_executor::handle_error(cl_int ret, int callerLine){
-  if(ret != CL_SUCCESS){
-    std::cout << getCLErrorString(ret) << " at line " << callerLine << std::endl;
+void GPU_executor::handle_error(NS::Error* error, int callerLine){
+  if(error){
+    std::cerr << "Metal Error: " << error->localizedDescription()->utf8String() << " at line " << callerLine << std::endl;
     exit(-1);
   }
 }
