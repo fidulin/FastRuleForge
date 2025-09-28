@@ -1,6 +1,7 @@
 // FastRuleForge source code
 
 #include "rule_generator.hh"
+#include <omp.h>
 
 rule_a_distance rule_generator::apply_rule(std::string rule, std::string *representative, std::string *password, int &distance)
 {

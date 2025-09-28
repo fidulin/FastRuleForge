@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <set>
 #include <string>
+#include <omp.h>
 
 
 int main(int argc, char *argv[]) {
@@ -42,6 +43,8 @@ int main(int argc, char *argv[]) {
     method->set_data(&executor);
     if(args.verbose){std::cout << "Using clustering method [" << args.get_method_name(i) << "]" << std::endl;}
     int* result = method->calculate();
+
+    exit(0);
     executor.clean();
   
     convert_clusters(result, executor.clusters, executor.PASSWORDS_COUNT);

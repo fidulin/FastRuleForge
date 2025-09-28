@@ -67,10 +67,16 @@ public:
             std::shuffle(indexes.begin(), indexes.end(), g);
         }
 
+        int iteration = 0;
         //For all passwords in a randomised sequence.
         for(int i : indexes){
             if(result[i] != -1){
                 continue;
+            }
+
+            iteration++;
+            if(iteration%500 == 0){
+                std::cout << "Iteration: " << iteration << std::endl;
             }
 
             //The password i is a Leader and distances to all other passwords are calculated.

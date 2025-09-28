@@ -1,9 +1,10 @@
 #generic makefile for fastruleforge
 CXX = clang++
-CXXFLAGS = -std=c++17 -MMD -MP -fmodules
+CXXFLAGS = -std=c++17 -MMD -MP -fmodules -Xpreprocessor -fopenmp -I/opt/homebrew/opt/libomp/include
 CPPFLAGS = -I./libs/metal-cpp
 OBJCPPFLAGS = -fobjc-arc
-LDFLAGS = -framework Foundation -framework Metal -framework QuartzCore
+LDFLAGS = -framework Foundation -framework Metal -framework QuartzCore -L/opt/homebrew/opt/libomp/lib
+LDLIBS = -lomp
 
 SRCS_CC = src/main.cc src/GPU_executor.cc src/rule_generator.cc src/args_handler.cc src/utils.cc
 SRCS_MM = src/metal_cpp.mm
@@ -14,7 +15,7 @@ DEPS = $(OBJS:.o=.d)
 TARGET = fastruleforge
 
 $(TARGET): $(OBJS)
-	$(CXX) $(CXXFLAGS) -o $(TARGET) $(OBJS) $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) -o $(TARGET) $(OBJS) $(LDFLAGS) $(LDLIBS)
 
 build/%.o: src/%.cc
 	@mkdir -p $(dir $@)
